@@ -28,10 +28,7 @@ import re
 banned_ext = [ 'AMD', 'APPLE', 'NV', 'NVX', 'ATI', '3DLABS', 'SUN', 'SGI', 'SGIX', 'SGIS', 'INTEL', '3DFX', 'IBM', 'MESA', 'GREMEDY', 'OML', 'PGI', 'I3D', 'INGL', 'MTX', 'QCOM', 'IMG', 'ANGLE', 'SUNX', 'INGR' ]
 
 def noext(sym):
-   for ext in banned_ext:
-      if sym.endswith(ext):
-         return False
-   return True
+   return not any(sym.endswith(ext) for ext in banned_ext)
 
 def fix_multiline_functions(lines):
    fixed_lines = []
@@ -40,7 +37,7 @@ def fix_multiline_functions(lines):
       if line.count('(') > line.count(')'):
          temp_lines.append(line)
       else:
-         if len(temp_lines) > 0:
+         if temp_lines:
             if line.count(')') > line.count('('):
                temp_lines.append(line)
                fixed_line = re.sub(' +',' ', ''.join(temp_lines).replace('\n','').replace('\t',''))
@@ -65,10 +62,7 @@ def find_gl_symbols(lines):
    return (typedefs, syms)
 
 def generate_defines(gl_syms):
-   res = []
-   for line in gl_syms:
-      res.append('#define {} __rglgen_{}'.format(line, line))
-   return res
+   return ['#define {} __rglgen_{}'.format(line, line) for line in gl_syms]
 
 def generate_declarations(gl_syms):
    return ['RGLSYM' + x.upper() + 'PROC ' + '__rglgen_' + x + ';' for x in gl_syms]
