@@ -121,6 +121,19 @@ struct retro_core_option_definition option_defs_us[] = {
       },
       "1x(native)"
    },
+#ifdef HAVE_VULKAN
+   {
+      BEETLE_OPT(scaled_uv_offset),
+      "Texture UV Offset",
+      "Sample textures for 3D polygons at an offset for higher than 1x internal resolution. Reduce texture seams but may cause unintended graphical glitches.",
+      {
+         { "enabled",  NULL },
+         { "disabled", NULL },
+         { NULL, NULL },
+      },
+      "enabled"
+   },
+#endif
 #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES) || defined(HAVE_VULKAN)
    {
       BEETLE_OPT(filter),
@@ -137,6 +150,32 @@ struct retro_core_option_definition option_defs_us[] = {
       },
       "nearest"
    },
+#ifdef HAVE_VULKAN
+   {
+      BEETLE_OPT(filter_exclude_sprite),
+      "Exclude Sprites from Filtering",
+      "Do not apply texture filtering to sprites. Prevent seams in various games with 2D sprite-rendered backgrounds. Use together with Adaptive Smoothing or another post-processing filter for best effect.",
+      {
+         { "disable", NULL },
+         { "opaque", "Opaque Only" },
+         { "all", "Opaque and Semi-Transparent" },
+         { NULL, NULL },
+      },
+      "disable"
+   },
+   {
+      BEETLE_OPT(filter_exclude_2d_polygon),
+      "Exclude 2D Polygons from Filtering",
+      "Do not apply texture filtering to 2D polygons. 2D polygons are detected with a heuristic and there may be glitches. Use together with Adaptive Smoothing or another post-processing filter for best effect.",
+      {
+         { "disable", NULL },
+         { "opaque", "Opaque Only" },
+         { "all", "Opaque and Semi-Transparent" },
+         { NULL, NULL },
+      },
+      "disable"
+   },
+#endif
 #endif
 #ifdef HAVE_VULKAN
    {
@@ -186,6 +225,41 @@ struct retro_core_option_definition option_defs_us[] = {
       },
       "disabled"
    },
+   {
+      BEETLE_OPT(track_textures),
+      "Track Textures",
+      "Prerequisite for texture dumping and replacement.  Will probably crash in most games.",
+      {
+         { "disabled", NULL },
+         { "enabled",  NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
+#ifdef TEXTURE_DUMPING_ENABLED
+   {
+      BEETLE_OPT(dump_textures),
+      "Dump Textures",
+      "Dumps used textures to <cd>-texture-dump/",
+      {
+         { "disabled", NULL },
+         { "enabled",  NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
+#endif
+   {
+      BEETLE_OPT(replace_textures),
+      "Replace Textures",
+      "Replaces textures using hd versions from <cd>-texture-replacements/",
+      {
+         { "disabled", NULL },
+         { "enabled",  NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
 #endif
 #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
    {
@@ -221,6 +295,36 @@ struct retro_core_option_definition option_defs_us[] = {
          { "disabled",     NULL },
          { "memory only",  "Memory Only" },
          { "memory + CPU", "Memory + CPU (Buggy)" },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
+   {
+      BEETLE_OPT(pgxp_2d_tol),
+      "PGXP 2D Geometry Tolerance",
+      "Hide more glaring errors in PGXP operations: the value specifies the tolerance in which PGXP values will be kept in case of geometries without proper depth information.",
+      {
+         { "disabled", NULL },
+         { "0px", NULL },
+         { "1px", NULL },
+         { "2px", NULL },
+         { "3px", NULL },
+         { "4px", NULL },
+         { "5px", NULL },
+         { "6px", NULL },
+         { "7px", NULL },
+         { "8px", NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
+   {
+      BEETLE_OPT(pgxp_nclip),
+      "PGXP Primitive Culling",
+      "Use PGXP's NCLIP implementation. Improves appearance by reducing holes in geometries with PGXP coordinates. Known to cause some games to lock up in various circumstances.",
+      {
+         { "disabled", NULL },
+         { "enabled", NULL },
          { NULL, NULL },
       },
       "disabled"
@@ -476,6 +580,19 @@ struct retro_core_option_definition option_defs_us[] = {
          { NULL, NULL },
       },
       "disabled"
+   },
+   {
+      BEETLE_OPT(widescreen_hack_aspect_ratio),
+      "Widescreen Mode Hack Aspect Ratio",
+      "The aspect ratio that's used by the Widescreen Mode Hack.",
+      {
+         { "16:10", NULL },
+         { "16:9",  NULL },
+         { "21:9",  NULL }, // 64:27
+         { "32:9",  NULL },
+         { NULL,    NULL },
+      },
+      "16:9"
    },
    {
       BEETLE_OPT(pal_video_timing_override),
@@ -915,7 +1032,7 @@ struct retro_core_option_definition option_defs_us[] = {
    {
       BEETLE_OPT(shared_memory_cards),
       "Shared Memory Cards (Restart)",
-      "When enabled, all games will save to and load from the same memory card files. When disabled, separate memory card files will be generated for each item of loaded content. Note: 'Memory Card 0 Method' must be set to 'Mednafen' for shared memory cards to take effect.",
+      "When enabled, all games will save to and load from the same memory card files. When disabled, separate memory card files will be generated for each item of loaded content. Note: if 'Memory Card 0 Method' is set to 'Libretro', only the right memory card will be affected.",
       {
          { "disabled", NULL },
          { "enabled",  NULL },
@@ -1067,6 +1184,152 @@ struct retro_core_option_definition option_defs_us[] = {
          { NULL, NULL },
       },
       "0%"
+   },
+   {
+      BEETLE_OPT(memcard_left_index),
+      "Memory Card Left Index",
+      "Changes the memory card currently loaded in the left slot. This option will only work if Memory Card 0 method is set to Mednafen. The default card is index 0.",
+      {
+         { "0",  NULL },
+         { "1",  NULL },
+         { "2",  NULL },
+         { "3",  NULL },
+         { "4",  NULL },
+         { "5",  NULL },
+         { "6",  NULL },
+         { "7",  NULL },
+         { "8",  NULL },
+         { "9",  NULL },
+         { "10",  NULL },
+         { "11",  NULL },
+         { "12",  NULL },
+         { "13",  NULL },
+         { "14",  NULL },
+         { "15",  NULL },
+         { "16",  NULL },
+         { "17",  NULL },
+         { "18",  NULL },
+         { "19",  NULL },
+         { "20",  NULL },
+         { "21",  NULL },
+         { "22",  NULL },
+         { "23",  NULL },
+         { "24",  NULL },
+         { "25",  NULL },
+         { "26",  NULL },
+         { "27",  NULL },
+         { "28",  NULL },
+         { "29",  NULL },
+         { "30",  NULL },
+         { "31",  NULL },
+         { "32",  NULL },
+         { "33",  NULL },
+         { "34",  NULL },
+         { "35",  NULL },
+         { "36",  NULL },
+         { "37",  NULL },
+         { "38",  NULL },
+         { "39",  NULL },
+         { "40",  NULL },
+         { "41",  NULL },
+         { "42",  NULL },
+         { "43",  NULL },
+         { "44",  NULL },
+         { "45",  NULL },
+         { "46",  NULL },
+         { "47",  NULL },
+         { "48",  NULL },
+         { "49",  NULL },
+         { "50",  NULL },
+         { "51",  NULL },
+         { "52",  NULL },
+         { "53",  NULL },
+         { "54",  NULL },
+         { "55",  NULL },
+         { "56",  NULL },
+         { "57",  NULL },
+         { "58",  NULL },
+         { "59",  NULL },
+         { "60",  NULL },
+         { "61",  NULL },
+         { "62",  NULL },
+         { "63",  NULL },
+         { NULL, NULL },
+      },
+      "0"
+   },
+   {
+      BEETLE_OPT(memcard_right_index),
+      "Memory Card Right Index",
+      "Changes the memory card currently loaded in the right slot. This option will only work if Memory Card 1 is enabled. The default card is index 1.",
+      {
+         { "0",  NULL },
+         { "1",  NULL },
+         { "2",  NULL },
+         { "3",  NULL },
+         { "4",  NULL },
+         { "5",  NULL },
+         { "6",  NULL },
+         { "7",  NULL },
+         { "8",  NULL },
+         { "9",  NULL },
+         { "10",  NULL },
+         { "11",  NULL },
+         { "12",  NULL },
+         { "13",  NULL },
+         { "14",  NULL },
+         { "15",  NULL },
+         { "16",  NULL },
+         { "17",  NULL },
+         { "18",  NULL },
+         { "19",  NULL },
+         { "20",  NULL },
+         { "21",  NULL },
+         { "22",  NULL },
+         { "23",  NULL },
+         { "24",  NULL },
+         { "25",  NULL },
+         { "26",  NULL },
+         { "27",  NULL },
+         { "28",  NULL },
+         { "29",  NULL },
+         { "30",  NULL },
+         { "31",  NULL },
+         { "32",  NULL },
+         { "33",  NULL },
+         { "34",  NULL },
+         { "35",  NULL },
+         { "36",  NULL },
+         { "37",  NULL },
+         { "38",  NULL },
+         { "39",  NULL },
+         { "40",  NULL },
+         { "41",  NULL },
+         { "42",  NULL },
+         { "43",  NULL },
+         { "44",  NULL },
+         { "45",  NULL },
+         { "46",  NULL },
+         { "47",  NULL },
+         { "48",  NULL },
+         { "49",  NULL },
+         { "50",  NULL },
+         { "51",  NULL },
+         { "52",  NULL },
+         { "53",  NULL },
+         { "54",  NULL },
+         { "55",  NULL },
+         { "56",  NULL },
+         { "57",  NULL },
+         { "58",  NULL },
+         { "59",  NULL },
+         { "60",  NULL },
+         { "61",  NULL },
+         { "62",  NULL },
+         { "63",  NULL },
+         { NULL, NULL },
+      },
+      "1"
    },
    { NULL, NULL, NULL, {{0}}, NULL },
 };

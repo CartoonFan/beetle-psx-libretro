@@ -1,6 +1,5 @@
 #include "rsx_lib_gl.h"
 
-#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h> /* exit() */
@@ -360,6 +359,7 @@ static RetroGl static_renderer;
 static bool has_software_fb = false;
 
 extern "C" unsigned char widescreen_hack;
+extern "C" unsigned char widescreen_hack_aspect_ratio_setting;
 extern "C" bool content_is_pal;
 extern "C" int aspect_ratio_setting;
 
@@ -465,7 +465,7 @@ static bool Shader_init(
       log_cb(RETRO_LOG_ERROR, "Shader_init() - Shader compilation failed:\n%s\n", source);
 
 
-      log_cb(RETRO_LOG_INFO, "Shader info log:\n%s\n", shader->info_log);
+      log_cb(RETRO_LOG_DEBUG, "Shader info log:\n%s\n", shader->info_log);
 
       return false;
    }
@@ -597,11 +597,11 @@ static bool Program_init(
    program->id       = id;
    program->uniforms = uniforms;
 
-   log_cb(RETRO_LOG_INFO, "Binding program for first time: %d\n", id);
+   log_cb(RETRO_LOG_DEBUG, "Binding program for first time: %d\n", id);
 
    glUseProgram(id);
 
-   log_cb(RETRO_LOG_INFO, "Unbinding program for first time: %d\n", id);
+   log_cb(RETRO_LOG_DEBUG, "Unbinding program for first time: %d\n", id);
 
    glUseProgram(0);
 
@@ -820,7 +820,10 @@ static void DrawBuffer_new(DrawBuffer<T> *drawbuffer,
    Shader_init(&fs, fragment_shader, GL_FRAGMENT_SHADER);
 
    if (!Program_init(program, &vs, &fs))
+   {
+      delete program;
       return;
+   }
 
    /* Program owns the two pointers, so we clean them up now */
    glDeleteShader(fs.id);
@@ -1313,7 +1316,7 @@ static bool GlRenderer_new(GlRenderer *renderer, DrawConfig config)
          wireframe = true;
    }
 
-   log_cb(RETRO_LOG_INFO, "Building OpenGL state (%dx internal res., %dbpp)\n", upscaling, depth);
+   log_cb(RETRO_LOG_DEBUG, "Building OpenGL state (%dx internal res., %dbpp)\n", upscaling, depth);
 
    switch(renderer->filter_type)
    {
@@ -1664,7 +1667,8 @@ static void bind_libretro_framebuffer(GlRenderer *renderer)
                                                                            renderer->initial_scanline,
                                                           content_is_pal ? renderer->last_scanline_pal :
                                                                            renderer->last_scanline,
-                                                          aspect_ratio_setting, renderer->display_vram, widescreen_hack);
+                                                          aspect_ratio_setting, renderer->display_vram, widescreen_hack,
+                                                          widescreen_hack_aspect_ratio_setting);
 
       environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
 
@@ -2159,7 +2163,7 @@ extern void GPU_RestoreStateP3(void);
 
 static void gl_context_reset(void)
 {
-   log_cb(RETRO_LOG_INFO, "gl_context_reset called.\n");
+   log_cb(RETRO_LOG_DEBUG, "gl_context_reset called.\n");
    glsm_ctl(GLSM_CTL_STATE_CONTEXT_RESET, NULL);
 
    if (!glsm_ctl(GLSM_CTL_STATE_SETUP, NULL))
@@ -2186,7 +2190,7 @@ static void gl_context_destroy(void)
 {
    glsm_ctl(GLSM_CTL_STATE_CONTEXT_DESTROY, NULL);
 
-   log_cb(RETRO_LOG_INFO, "gl_context_destroy called.\n");
+   log_cb(RETRO_LOG_DEBUG, "gl_context_destroy called.\n");
 
    if (static_renderer.state_data)
    {
@@ -2209,16 +2213,17 @@ extern "C" bool currently_interlaced;
 static struct retro_system_av_info get_av_info(VideoClock std)
 {
    struct retro_system_av_info info;
-   unsigned int max_width    = 0;
-   unsigned int max_height   = 0;
-   uint8_t upscaling         = 1;
-   bool widescreen_hack      = false;
-   bool display_vram         = false;
-   bool crop_overscan        = false;
-   int initial_scanline_ntsc = 0;
-   int last_scanline_ntsc    = 239;
-   int initial_scanline_pal  = 0;
-   int last_scanline_pal     = 287;
+   unsigned int max_width                   = 0;
+   unsigned int max_height                  = 0;
+   uint8_t upscaling                        = 1;
+   bool widescreen_hack                     = false;
+   int widescreen_hack_aspect_ratio_setting = 1;
+   bool display_vram                        = false;
+   bool crop_overscan                       = false;
+   int initial_scanline_ntsc                = 0;
+   int last_scanline_ntsc                   = 239;
+   int initial_scanline_pal                 = 0;
+   int last_scanline_pal                    = 287;
 
    /* This function currently queries core options rather than
       checking GlRenderer state; possible to refactor? */
@@ -2232,6 +2237,19 @@ static struct retro_system_av_info get_av_info(VideoClock std)
    {
       if (!strcmp(var.value, "enabled"))
          widescreen_hack = true;
+   }
+
+   var.key = BEETLE_OPT(widescreen_hack_aspect_ratio);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "16:10"))
+         widescreen_hack_aspect_ratio_setting = 0;
+      else if (!strcmp(var.value, "16:9"))
+         widescreen_hack_aspect_ratio_setting = 1;
+      else if (!strcmp(var.value, "21:9"))
+         widescreen_hack_aspect_ratio_setting = 2;
+      else if (!strcmp(var.value, "32:9"))
+         widescreen_hack_aspect_ratio_setting = 3;
    }
 
    var.key = BEETLE_OPT(crop_overscan);
@@ -2288,7 +2306,8 @@ static struct retro_system_av_info get_av_info(VideoClock std)
    info.geometry.aspect_ratio = rsx_common_get_aspect_ratio(std, crop_overscan,
                                                             std ? initial_scanline_pal : initial_scanline_ntsc,
                                                             std ? last_scanline_pal : last_scanline_ntsc,
-                                                            aspect_ratio_setting, display_vram, widescreen_hack);
+                                                            aspect_ratio_setting, display_vram, widescreen_hack,
+                                                            widescreen_hack_aspect_ratio_setting);
 
    info.timing.fps = rsx_common_get_timing_fps();
    info.timing.sample_rate = SOUND_FREQUENCY;
@@ -2377,7 +2396,7 @@ void rsx_gl_refresh_variables(void)
       if (!ok)
       {
          log_cb(RETRO_LOG_WARN, "Couldn't change frontend resolution\n");
-         log_cb(RETRO_LOG_INFO, "Try resetting to enable the new configuration\n");
+         log_cb(RETRO_LOG_DEBUG, "Try resetting to enable the new configuration\n");
       }
    }
 }

@@ -1,11 +1,8 @@
 #ifndef __MDFN_SIMPLEFIFO_H
 #define __MDFN_SIMPLEFIFO_H
 
-#include <assert.h>
-
 #include "../math_ops.h"
 
-template<typename T>
 class SimpleFIFO
 {
  public:
@@ -14,13 +11,11 @@ class SimpleFIFO
  SimpleFIFO(uint32 the_size)
  {
     /* Size should be a power of 2! */
-    assert(the_size && !(the_size & (the_size - 1)));
-
-    data = (T*)malloc(the_size * sizeof(T));
-    size = the_size;
-    read_pos = 0;
+    data      = (uint8*)malloc(the_size * sizeof(uint8));
+    size      = the_size;
+    read_pos  = 0;
     write_pos = 0;
-    in_count = 0;
+    in_count  = 0;
  }
 
  // Destructor
@@ -35,54 +30,32 @@ class SimpleFIFO
   return(size - in_count);
  }
 
- INLINE T ReadUnit(bool peek = false)
+ INLINE uint8 ReadByte(void)
  {
-  T ret;
-
-  assert(in_count > 0);
-
-  ret = data[read_pos];
-
-  if(!peek)
-  {
-   read_pos = (read_pos + 1) & (size - 1);
-   in_count--;
-  }
-
-  return(ret);
+    uint8 ret = data[read_pos];
+    read_pos  = (read_pos + 1) & (size - 1);
+    in_count--;
+    return(ret);
  }
 
- INLINE uint8 ReadByte(bool peek = false)
+ INLINE void Write(const uint8 *happy_data, uint32 happy_count)
  {
-  assert(sizeof(T) == 1);
+    while(happy_count)
+    {
+       data[write_pos] = *happy_data;
 
-  return(ReadUnit(peek));
+       write_pos = (write_pos + 1) & (size - 1);
+       in_count++;
+       happy_data++;
+       happy_count--;
+    }
  }
 
- INLINE void Write(const T *happy_data, uint32 happy_count)
+ INLINE void WriteByte(const uint8 wr_data)
  {
-  assert(CanWrite() >= happy_count);
-
-  while(happy_count)
-  {
-   data[write_pos] = *happy_data;
-
-   write_pos = (write_pos + 1) & (size - 1);
-   in_count++;
-   happy_data++;
-   happy_count--;
-  }
- }
-
- INLINE void WriteUnit(const T& wr_data)
- {
-  Write(&wr_data, 1);
- }
-
- INLINE void WriteByte(const T& wr_data)
- {
-  assert(sizeof(T) == 1);
-  Write(&wr_data, 1);
+    data[write_pos] = wr_data;
+    write_pos       = (write_pos + 1) & (size - 1);
+    in_count++;
  }
 
 
@@ -100,7 +73,7 @@ class SimpleFIFO
     in_count  %= (size + 1);
  }
 
- T* data;
+ uint8* data;
  uint32 size;
  uint32 read_pos; // Read position
  uint32 write_pos; // Write position

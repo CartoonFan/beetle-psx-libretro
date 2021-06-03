@@ -6,8 +6,10 @@ HAVE_JIT = 0
 HAVE_CHD = 1
 HAVE_CDROM = 0
 HAVE_LIGHTREC = 1
+LINK_STATIC_LIBCPLUSPLUS = 1
 THREADED_RECOMPILER = 1
 LIGHTREC_DEBUG = 0
+LIGHTREC_LOG_LEVEL = 2
 
 CORE_DIR := .
 HAVE_GRIFFIN = 0
@@ -95,17 +97,20 @@ ifneq (,$(findstring unix,$(platform)))
       GREP = grep
       SHARED := -shared -Wl,--no-undefined -Wl,--version-script=link.T
    endif
+   ifeq ($(LINK_STATIC_LIBCPLUSPLUS),1)
+      LDFLAGS += -static-libgcc -static-libstdc++
+   endif
    ifneq ($(shell uname -p | $(GREP) -E '((i.|x)86|amd64)'),)
       IS_X86 = 1
    endif
    ifneq (,$(findstring Haiku,$(shell uname -s)))
-     LDFLAGS += $(PTHREAD_FLAGS) -lroot
+      LDFLAGS += $(PTHREAD_FLAGS) -lroot
    else
-     LDFLAGS += $(PTHREAD_FLAGS) -ldl
-   endif
-   ifeq ($(HAVE_LIGHTREC), 1)
-      LDFLAGS += -lrt
-      FLAGS += -DHAVE_SHM
+      LDFLAGS += $(PTHREAD_FLAGS) -ldl
+      ifeq ($(HAVE_LIGHTREC), 1)
+         LDFLAGS += -lrt
+         FLAGS += -DHAVE_SHM
+      endif
    endif
    FLAGS   +=
    ifeq ($(HAVE_OPENGL),1)
@@ -113,7 +118,7 @@ ifneq (,$(findstring unix,$(platform)))
          GLES = 1
          GL_LIB := -lGLESv2
       else
-         GL_LIB := -L/usr/local/lib -lGL
+         GL_LIB := -lGL
       endif
    endif
 
@@ -144,6 +149,13 @@ else ifeq ($(platform), osx)
    ifeq ($(HAVE_OPENGL),1)
       GL_LIB := -framework OpenGL
    endif
+   ifeq ($(CROSS_COMPILE),1)
+	TARGET_RULE   = -target $(LIBRETRO_APPLE_PLATFORM) -isysroot $(LIBRETRO_APPLE_ISYSROOT)
+	CFLAGS   += $(TARGET_RULE)
+	CPPFLAGS += $(TARGET_RULE)
+	CXXFLAGS += $(TARGET_RULE)
+	LDFLAGS  += $(TARGET_RULE)
+   endif
 
 # iOS
 else ifneq (,$(findstring ios,$(platform)))
@@ -172,8 +184,9 @@ else ifneq (,$(findstring ios,$(platform)))
    else
       IPHONEMINVER = -miphoneos-version-min=5.0
    endif
+   HAVE_LIGHTREC = 0
    LDFLAGS += $(IPHONEMINVER)
-   FLAGS   += $(IPHONEMINVER)
+   FLAGS   += $(IPHONEMINVER) -DHAVE_UNISTD_H
    CC      += $(IPHONEMINVER)
    CXX     += $(IPHONEMINVER)
 
@@ -182,6 +195,8 @@ else ifeq ($(platform), tvos-arm64)
    TARGET := $(TARGET_NAME)_libretro_tvos.dylib
    fpic := -fPIC
    SHARED := -dynamiclib
+   HAVE_LIGHTREC = 0
+   FLAGS += -DHAVE_UNISTD_H
 
 ifeq ($(IOSSDK),)
    IOSSDK := $(shell xcodebuild -version -sdk appletvos Path)
@@ -399,6 +414,21 @@ else ifeq ($(platform), emscripten)
          GL_LIB := -lGL
       endif
    endif
+
+# Raspberry Pi 4 in 64bit mode
+else ifeq ($(platform), rpi4_64)
+   TARGET := $(TARGET_NAME)_libretro.so
+   fpic   := -fPIC
+   GREP = grep
+   SHARED := -shared -Wl,--no-undefined -Wl,--version-script=link.T
+   CFLAGS   += -O3 -DNDEBUG -march=armv8-a+crc+simd -mtune=cortex-a72 -fsigned-char 
+   CXXFLAGS += -O3 -DNDEBUG -march=armv8-a+crc+simd -mtune=cortex-a72 -fsigned-char
+   LDFLAGS += $(PTHREAD_FLAGS) -ldl -lrt
+   HAVE_LIGHTREC = 1
+   FLAGS += -DHAVE_SHM
+   GLES = 1
+   GL_LIB := -lGLESv2
+   HAVE_CDROM = 0
 
 # Windows MSVC 2017 all architectures
 else ifneq (,$(findstring windows_msvc2017,$(platform)))
@@ -653,22 +683,19 @@ ifeq ($(STATIC_LINKING), 1)
 	$(AR) rcs $@ $(OBJECTS)
 else
 	@$(LD) $(LINKOUT)$@ $^ $(LDFLAGS) $(GL_LIB) $(LIBS)
-	@echo "LD $(TARGET)"
 endif
 
 %.o: %.cpp
-	@$(CXX) -c $(OBJOUT)$@ $< $(CXXFLAGS)
-	@echo "CXX $<"
+	$(CXX) -c $(OBJOUT)$@ $< $(CXXFLAGS)
 
 %.o: %.c
-	@$(CC) -c $(OBJOUT)$@ $< $(CFLAGS)
-	@echo "CC $<"
+	$(CC) -c $(OBJOUT)$@ $< $(CFLAGS)
 
 clean:
 	@rm -f $(OBJECTS)
-	@echo rm -f *.o
+	@echo rm -f "*.o"
 	@rm -f $(DEPS)
-	@echo rm -f *.d
+	@echo rm -f "*.d"
 	rm -f $(TARGET) $(TARGET_TMP)
 
 .PHONY: clean

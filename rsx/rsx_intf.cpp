@@ -2,7 +2,6 @@
 
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -92,7 +91,7 @@ void rsx_intf_get_system_av_info(struct retro_system_av_info *info)
          info->geometry.aspect_ratio = rsx_common_get_aspect_ratio(content_is_pal, crop_overscan,
                                           MDFN_GetSettingI(content_is_pal ? "psx.slstartp" : "psx.slstart"),
                                           MDFN_GetSettingI(content_is_pal ? "psx.slendp" : "psx.slend"),
-                                          aspect_ratio_setting, false, widescreen_hack);
+                                          aspect_ratio_setting, false, widescreen_hack, widescreen_hack_aspect_ratio_setting);
          break;
       case RSX_OPENGL:
 #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
@@ -636,7 +635,9 @@ void rsx_intf_push_quad(
    bool dither,
    int blend_mode,
    uint32_t mask_test,
-   uint32_t set_mask)
+   uint32_t set_mask,
+   bool is_sprite,
+   bool may_be_2d)
 {
 #ifdef RSX_DUMP
    const rsx_dump_vertex vertices[4] = {
@@ -679,7 +680,7 @@ void rsx_intf_push_quad(
                texture_blend_mode,
                depth_shift,
                dither,
-               blend_mode, mask_test != 0, set_mask != 0);
+               blend_mode, mask_test != 0, set_mask != 0, is_sprite, may_be_2d);
 #endif
          break;
    }
@@ -875,7 +876,8 @@ double rsx_common_get_timing_fps(void)
 
 float rsx_common_get_aspect_ratio(bool pal_content, bool crop_overscan,
                                   int first_visible_scanline, int last_visible_scanline,
-                                  int aspect_ratio_setting, bool vram_override, bool widescreen_override)
+                                  int aspect_ratio_setting, bool vram_override, bool widescreen_override,
+                                  int widescreen_hack_aspect_ratio_setting)
 {
    // Current assumptions
    //    A fixed percentage of width is cropped when crop_overscan is true
@@ -891,7 +893,17 @@ float rsx_common_get_aspect_ratio(bool pal_content, bool crop_overscan,
       return 2.0 / 1.0;
 
    if (widescreen_override)
-      return 16.0 / 9.0;
+      switch(widescreen_hack_aspect_ratio_setting)
+      {
+         case 0:
+            return (16.0 / 10.0);
+         case 1:
+            return (16.0 / 9.0);
+         case 2:
+            return (/*21.0 / 9.0*/ 64.0 / 27.0);
+         case 3:
+            return (32.0 / 9.0);
+      }
 
    float ar = (4.0 / 3.0);
 

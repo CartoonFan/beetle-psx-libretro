@@ -63,9 +63,7 @@ PS_CDC::PS_CDC() : DMABuffer(4096)
    DriveStatus = DS_STOPPED;
    PendingCommandPhase = 0;
 
-#ifndef HAVE_CDROM_NEW
    TOC_Clear(&toc);
-#endif
 }
 
 extern unsigned cd_2x_speedup;
@@ -240,8 +238,8 @@ int PS_CDC::StateAction(StateMem *sm, int load, int data_only)
 {
    SFORMAT StateRegs[] =
    {
-      SFVAR(DiscChanged),
-      SFVAR(DiscStartupDelay),
+      SFVARN_BOOL(DiscChanged, "DiscChanged"),
+      SFVARN(DiscStartupDelay, "DiscStartupDelay"),
 
       SFARRAY16(&AudioBuffer.Samples[0][0], sizeof(AudioBuffer.Samples) / sizeof(AudioBuffer.Samples[0][0])),
       SFVAR(AudioBuffer.Size),
@@ -252,12 +250,12 @@ int PS_CDC::StateAction(StateMem *sm, int load, int data_only)
       SFARRAY(&DecodeVolume[0][0], 2 * 2),
 
       SFARRAY16(&ADPCM_ResampBuf[0][0], sizeof(ADPCM_ResampBuf) / sizeof(ADPCM_ResampBuf[0][0])),
-      SFVAR(ADPCM_ResampCurPhase),
-      SFVAR(ADPCM_ResampCurPos),
+      SFVARN(ADPCM_ResampCurPhase, "ADPCM_ResampCurPhase"),
+      SFVARN(ADPCM_ResampCurPos, "ADPCM_ResampCurPos"),
 
 
 
-      SFVAR(RegSelector),
+      SFVARN(RegSelector, "RegSelector"),
       SFARRAY(ArgsBuf, 16),
       SFVAR(ArgsWP),
       SFVAR(ArgsRP),
@@ -1843,7 +1841,7 @@ void PS_CDC::ReadBase(void)
 
       if(CommandLoc_Dirty)
          SeekTarget = CommandLoc;
-      else if (DriveStatus != DS_PAUSED && DriveStatus != DS_STANDBY)
+      else
          SeekTarget = CurSector;
 
       PSRCounter = /*903168 * 1.5 +*/ CalcSeekTime(CurSector, SeekTarget, DriveStatus != DS_STOPPED, DriveStatus == DS_PAUSED);

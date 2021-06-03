@@ -241,7 +241,7 @@ bool CDAccess_Image::ParseTOCFileLineInfo(CDRFILE_TRACK_INFO *track, const int t
 
       track->FirstFileInstance = 1;
 
-      efn = MDFN_EvalFIP(base_dir, filename);
+      efn = MDFN_EvalFIP(base_dir, filename, false);
 
       if(image_memcache)
          track->fp = new MemoryStream(new FileStream(efn.c_str(), MODE_READ));
@@ -394,7 +394,7 @@ bool CDAccess_Image::ImageOpen(const char *path, bool image_memcache)
    {
       uint8 bom_tmp[3];
 
-      if(fp.read(bom_tmp, 3, false) == 3 && bom_tmp[0] == 0xEF && bom_tmp[1] == 0xBB && bom_tmp[2] == 0xBF)
+      if(fp.read(bom_tmp, 3) == 3 && bom_tmp[0] == 0xEF && bom_tmp[1] == 0xBB && bom_tmp[2] == 0xBF)
       {
          log_cb(RETRO_LOG_ERROR, "UTF-8 BOM detected at start of CUE sheet.\n");
       }
@@ -638,7 +638,7 @@ bool CDAccess_Image::ImageOpen(const char *path, bool image_memcache)
             std::string efn;
 
             if(args[0].find("cdrom://") == std::string::npos)
-               efn = MDFN_EvalFIP(base_dir, args[0]);
+               efn = MDFN_EvalFIP(base_dir, args[0], false);
             else
                efn = args[0];
 

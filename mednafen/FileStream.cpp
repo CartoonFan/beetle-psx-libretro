@@ -18,7 +18,6 @@
  */
 
 #include "mednafen.h"
-#include "error.h"
 #include "Stream.h"
 #include "FileStream.h"
 
@@ -28,20 +27,18 @@
 FileStream::FileStream(const char *path, const int mode)
 {
    fp = filestream_open(path, (mode == MODE_WRITE || mode == MODE_WRITE_INPLACE) ? RETRO_VFS_FILE_ACCESS_WRITE : RETRO_VFS_FILE_ACCESS_READ, RETRO_VFS_FILE_ACCESS_HINT_NONE);
-
-   if (!fp)
-   {
-      ErrnoHolder ene(errno);
-
-      MDFN_Error(ene.Errno(), "Error opening file:\n%s\n%s", path, ene.StrError());
-   }
 }
 
 FileStream::~FileStream()
 {
+   if (fp)
+   {
+      filestream_close(fp);
+      fp = NULL;
+   }
 }
 
-uint64_t FileStream::read(void *data, uint64_t count, bool error_on_eos)
+uint64_t FileStream::read(void *data, uint64_t count)
 {
    if (!fp)
       return 0;
@@ -94,4 +91,5 @@ void FileStream::close(void)
    if (!fp)
       return;
    filestream_close(fp);
+   fp = NULL;
 }

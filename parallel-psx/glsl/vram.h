@@ -6,7 +6,17 @@ layout(location = 2) flat in mediump ivec3 vParam;
 layout(location = 3) flat in mediump ivec2 vBaseUV;
 layout(location = 4) flat in mediump ivec4 vWindow;
 layout(location = 5) flat in mediump ivec4 vTexLimits;
+#if defined(UNSCALED)
 layout(set = 0, binding = 0) uniform mediump usampler2D uFramebuffer;
+#else
+layout(constant_id = 3) const int SCALE = 1;
+#if defined(MSAA)
+layout(set = 0, binding = 0) uniform mediump sampler2DMS uFramebufferMS;
+#else
+layout(set = 0, binding = 0) uniform mediump sampler2D uFramebuffer;
+#endif
+#endif
+layout(constant_id = 4) const int SHIFT = 0;
 
 vec2 clamp_coord(vec2 coord)
 {
@@ -16,20 +26,34 @@ vec2 clamp_coord(vec2 coord)
 // Nearest neighbor
 vec4 sample_vram_atlas(vec2 uvv)
 {
+    const vec2 FB_SIZE = vec2(1024, 512);
+    const ivec2 FB_MASK = ivec2(1023, 511);
     ivec3 params = vParam;
-    int shift = params.z & 3;
+    // int shift = params.z & 3;
+    const int shift = SHIFT;
 
-    ivec2 uv = (ivec2(uvv) & vWindow.xy) | vWindow.zw;
-
+#if defined(UNSCALED)
     ivec2 coord;
+#else
+    vec2 coord;
+#endif
     if (shift != 0)
     {
         int bpp = 16 >> shift;
-        coord = ivec2(uv);
-        int phase = coord.x & ((1 << shift) - 1);
+        ivec2 uv = (ivec2(uvv) & vWindow.xy) | vWindow.zw;
+        int phase = uv.x & ((1 << shift) - 1);
         int align = bpp * phase;
-        coord.x >>= shift;
-        int value = int(texelFetch(uFramebuffer, (vBaseUV + coord) & ivec2(1023, 511), 0).x);
+        uv.x >>= shift;
+#if defined(UNSCALED)
+        int value = int(texelFetch(uFramebuffer, (vBaseUV + uv) & FB_MASK, 0).x);
+#else
+        uv = ivec2(mod((vBaseUV + uv), FB_SIZE));
+#if defined(MSAA)
+        int value = int(pack_abgr1555(texelFetch(uFramebufferMS, uv * SCALE, gl_SampleID)));
+#else
+        int value = int(pack_abgr1555(texelFetch(uFramebuffer, uv * SCALE, 0)));
+#endif
+#endif
         int mask = (1 << bpp) - 1;
         value = (value >> align) & mask;
 
@@ -37,9 +61,19 @@ vec4 sample_vram_atlas(vec2 uvv)
         coord = params.xy;
     }
     else
-        coord = vBaseUV + uv;
+#if defined(UNSCALED)
+        coord = vBaseUV + ivec2(uvv);
+#else
+        coord = vBaseUV + uvv;
+#endif
 
-    return abgr1555(texelFetch(uFramebuffer, coord & ivec2(1023, 511), 0).x);
+#if defined(UNSCALED)
+    return abgr1555(texelFetch(uFramebuffer, coord & FB_MASK, 0).x);
+#elif defined(MSAA)
+    return texelFetch(uFramebufferMS, ivec2(mod(coord, FB_SIZE) * SCALE), gl_SampleID);
+#else
+    return texelFetch(uFramebuffer, ivec2(mod(coord, FB_SIZE) * SCALE), 0);
+#endif
 }
 
 // Take a normalized color and convert it into a 16bit 1555 ABGR
@@ -62,7 +96,7 @@ bool is_transparent(vec4 texel)
 	return rebuild_psx_color(texel) == 0U;
 }
 
-#ifdef FILTER_BILINEAR
+#ifdef FILTERS
 vec4 sample_vram_bilinear(out float opacity)
 {
   float x = vUV.x;
@@ -98,9 +132,7 @@ vec4 sample_vram_bilinear(out float opacity)
 
    return texel;
 }
-#endif
 
-#ifdef FILTER_XBR
 const int BLEND_NONE = 0;
 const int BLEND_NORMAL = 1;
 const int BLEND_DOMINANT = 2;
@@ -149,7 +181,7 @@ bool neq(vec4 a, vec4 b){
 }
 
 vec4 P(vec2 coord, int x, int y){
-   return sample_vram_atlas(coord + vec2(x, y));
+   return sample_vram_atlas(clamp_coord(coord + vec2(x, y)));
 }
 
 vec4 sample_vram_xbr(out float opacity)
@@ -363,9 +395,7 @@ vec4 sample_vram_xbr(out float opacity)
     res.xyz = res.xyz * (1./opacity);
     return vec4(res);
 }
-#endif
 
-#ifdef FILTER_SABR
 // constants and functions for sabr
 const  vec4 Ai  = vec4( 1.0, -1.0, -1.0,  1.0);
 const  vec4 B45 = vec4( 1.0,  1.0, -1.0, -1.0);
@@ -405,6 +435,10 @@ float c_df(vec4 c1, vec4 c2) {
 	return df.r + df.g + df.b;
 }
 
+vec4 P(vec2 coord){
+   return sample_vram_atlas(clamp_coord(coord));
+}
+
 //sabr
 vec4 sample_vram_sabr(out float opacity)
 {
@@ -418,53 +452,53 @@ vec4 sample_vram_sabr(out float opacity)
    vec4 xyp_9_14_9   = tc.xyyy + vec4( 2, -1, 0,  1);
    
 	// Store mask values
-	vec4 P1  = sample_vram_atlas(xyp_1_2_3.xw   );
+	vec4 P1  = P(xyp_1_2_3.xw   );
 	P1.w = 1. - float(is_transparent(P1));
-	vec4 P2  = sample_vram_atlas(xyp_1_2_3.yw   );
+	vec4 P2  = P(xyp_1_2_3.yw   );
 	P2.w = 1. - float(is_transparent(P2));
-	vec4 P3  = sample_vram_atlas(xyp_1_2_3.zw   );
+	vec4 P3  = P(xyp_1_2_3.zw   );
 	P3.w = 1. - float(is_transparent(P3));
 
-	vec4 P6  = sample_vram_atlas(xyp_6_7_8.xw   );
+	vec4 P6  = P(xyp_6_7_8.xw   );
 	P6.w = 1. - float(is_transparent(P6));
-	vec4 P7  = sample_vram_atlas(xyp_6_7_8.yw   );
+	vec4 P7  = P(xyp_6_7_8.yw   );
 	P7.w = 1. - float(is_transparent(P7));
-	vec4 P8  = sample_vram_atlas(xyp_6_7_8.zw   );
+	vec4 P8  = P(xyp_6_7_8.zw   );
 	P8.w = 1. - float(is_transparent(P8));
 
-	vec4 P11 = sample_vram_atlas(xyp_11_12_13.xw);
+	vec4 P11 = P(xyp_11_12_13.xw);
 	P11.w = 1. - float(is_transparent(P11));
-	vec4 P12 = sample_vram_atlas(xyp_11_12_13.yw);
+	vec4 P12 = P(xyp_11_12_13.yw);
 	P12.w = 1. - float(is_transparent(P12));
-	vec4 P13 = sample_vram_atlas(xyp_11_12_13.zw);
+	vec4 P13 = P(xyp_11_12_13.zw);
 	P13.w = 1. - float(is_transparent(P13));
 
-	vec4 P16 = sample_vram_atlas(xyp_16_17_18.xw);
+	vec4 P16 = P(xyp_16_17_18.xw);
 	P16.w = 1. - float(is_transparent(P16));
-	vec4 P17 = sample_vram_atlas(xyp_16_17_18.yw);
+	vec4 P17 = P(xyp_16_17_18.yw);
 	P17.w = 1. - float(is_transparent(P17));
-	vec4 P18 = sample_vram_atlas(xyp_16_17_18.zw);
+	vec4 P18 = P(xyp_16_17_18.zw);
 	P18.w = 1. - float(is_transparent(P18));
 
-	vec4 P21 = sample_vram_atlas(xyp_21_22_23.xw);
+	vec4 P21 = P(xyp_21_22_23.xw);
 	P21.w = 1. - float(is_transparent(P21));
-	vec4 P22 = sample_vram_atlas(xyp_21_22_23.yw);
+	vec4 P22 = P(xyp_21_22_23.yw);
 	P22.w = 1. - float(is_transparent(P22));
-	vec4 P23 = sample_vram_atlas(xyp_21_22_23.zw);
+	vec4 P23 = P(xyp_21_22_23.zw);
 	P23.w = 1. - float(is_transparent(P23));
 
-	vec4 P5  = sample_vram_atlas(xyp_5_10_15.xy );
+	vec4 P5  = P(xyp_5_10_15.xy );
 	P5.w = 1. - float(is_transparent(P5));
-	vec4 P10 = sample_vram_atlas(xyp_5_10_15.xz );
+	vec4 P10 = P(xyp_5_10_15.xz );
 	P10.w = 1. - float(is_transparent(P10));
-	vec4 P15 = sample_vram_atlas(xyp_5_10_15.xw );
+	vec4 P15 = P(xyp_5_10_15.xw );
 	P15.w = 1. - float(is_transparent(P15));
 
-	vec4 P9  = sample_vram_atlas(xyp_9_14_9.xy  );
+	vec4 P9  = P(xyp_9_14_9.xy  );
 	P9.w = 1. - float(is_transparent(P9));
-	vec4 P14 = sample_vram_atlas(xyp_9_14_9.xz  );
+	vec4 P14 = P(xyp_9_14_9.xz  );
 	P14.w = 1. - float(is_transparent(P14));
-	vec4 P19 = sample_vram_atlas(xyp_9_14_9.xw  );
+	vec4 P19 = P(xyp_9_14_9.xw  );
 	P19.w = 1. - float(is_transparent(P19));
 
 // Store luminance values of each point
@@ -520,9 +554,7 @@ vec4 sample_vram_sabr(out float opacity)
 
    return texel;
 }
-#endif
 
-#ifdef FILTER_JINC2
 const float JINC2_WINDOW_SINC = 0.44;
 const float JINC2_SINC = 0.82;
 const float JINC2_AR_STRENGTH = 0.8;
@@ -553,7 +585,8 @@ vec4 resampler(vec4 x)
 {
    vec4 res;
 
-   res = (x==vec4(0.0, 0.0, 0.0, 0.0)) ?  vec4(wa*wb)  :  sin(x*wa)*sin(x*wb)/(x*x);
+   // Need to use mix(.., equal(..)) since we want zero check to be component wise
+   res = mix(sin(x*wa)*sin(x*wb)/(x*x), vec4(wa*wb), equal(x,vec4(0.0, 0.0, 0.0, 0.0)));
 
    return res;
 }
@@ -635,9 +668,7 @@ vec4 sample_vram_jinc2(out float opacity)
     texel.rgb = texel.rgb * (1./opacity);
     return texel;
 }
-#endif
 
-#ifdef FILTER_3POINT
 vec4 sample_vram_3point(out float opacity)
 {
   float x = vUV.x;

@@ -1,7 +1,6 @@
 #include "rsx/rsx_lib_vulkan.h"
 
 #include <stdint.h>
-#include <stdio.h>
 
 #include <functional>
 #include <vector>
@@ -30,6 +29,7 @@ static unsigned scaling = 4;
 // Declare extern as workaround for now to avoid variable
 // naming conflicts with beetle_psx_globals.h
 extern "C" uint8_t widescreen_hack;
+extern "C" uint8_t widescreen_hack_aspect_ratio_setting;
 extern "C" bool content_is_pal;
 extern "C" int filter_mode;
 extern "C" bool currently_interlaced;
@@ -47,12 +47,18 @@ static retro_vulkan_image swapchain_image;
 static Renderer::SaveState save_state;
 static bool inside_frame;
 static bool has_software_fb;
+static bool scaled_uv_offset;
+static int filter_exclude_sprites;
+static int filter_exclude_2d_polygons;
 static bool adaptive_smoothing;
 static bool super_sampling;
 static unsigned msaa = 1;
 static bool mdec_yuv;
 static vector<function<void ()>> defer;
 static dither_mode dither_mode = DITHER_NATIVE;
+static bool dump_textures = false;
+static bool replace_textures = false;
+static bool track_textures = false;
 static bool crop_overscan;
 static int image_offset_cycles;
 static int initial_scanline;
@@ -149,6 +155,9 @@ static bool libretro_create_device(
       return false;
    }
 
+   context->set_notification_callback([](const char* message) {
+      printf("Vulkan Validation Layer Says: %s\n", message);
+   });
    context->release_device();
    libretro_context->gpu = context->get_gpu();
    libretro_context->device = context->get_device();
@@ -211,7 +220,7 @@ void rsx_vulkan_get_system_av_info(struct retro_system_av_info *info)
    info->geometry.aspect_ratio = rsx_common_get_aspect_ratio(content_is_pal, crop_overscan,
                                        content_is_pal ? initial_scanline_pal : initial_scanline,
                                        content_is_pal ? last_scanline_pal : last_scanline,
-                                       aspect_ratio_setting, show_vram, widescreen_hack);
+                                       aspect_ratio_setting, show_vram, widescreen_hack, widescreen_hack_aspect_ratio_setting);
 
    // Set retro_system_timing
    info->timing.fps = rsx_common_get_timing_fps();
@@ -241,6 +250,7 @@ void rsx_vulkan_refresh_variables(void)
    bool old_show_vram = show_vram;
    bool old_crop_overscan = crop_overscan;
    bool old_widescreen_hack = widescreen_hack;
+   unsigned old_widescreen_hack_aspect_ratio_setting = widescreen_hack_aspect_ratio_setting;
    bool visible_scanlines_changed = false;
 
    var.key = BEETLE_OPT(internal_resolution);
@@ -253,6 +263,37 @@ void rsx_vulkan_refresh_variables(void)
          scaling  = (var.value[0] - '0') * 10;
          scaling += var.value[1] - '0';
       }
+   }
+
+   var.key = BEETLE_OPT(scaled_uv_offset);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "enabled"))
+         scaled_uv_offset = true;
+      else
+         scaled_uv_offset = false;
+   }
+
+   var.key = BEETLE_OPT(filter_exclude_sprite);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "all"))
+         filter_exclude_sprites = 2;
+      else if (!strcmp(var.value, "opaque"))
+         filter_exclude_sprites = 1;
+      else
+         filter_exclude_sprites = 0;
+   }
+
+   var.key = BEETLE_OPT(filter_exclude_2d_polygon);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "all"))
+         filter_exclude_2d_polygons = 2;
+      else if (!strcmp(var.value, "opaque"))
+         filter_exclude_2d_polygons = 1;
+      else
+         filter_exclude_2d_polygons = 0;
    }
 
    var.key = BEETLE_OPT(adaptive_smoothing);
@@ -366,6 +407,54 @@ void rsx_vulkan_refresh_variables(void)
          widescreen_hack = false;
    }
 
+   var.key = BEETLE_OPT(widescreen_hack_aspect_ratio);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "16:10"))
+         widescreen_hack_aspect_ratio_setting = 0;
+      else if (!strcmp(var.value, "16:9"))
+         widescreen_hack_aspect_ratio_setting = 1;
+      else if (!strcmp(var.value, "21:9"))
+         widescreen_hack_aspect_ratio_setting = 2;
+      else if (!strcmp(var.value, "32:9"))
+         widescreen_hack_aspect_ratio_setting = 3;
+   }
+
+   var.key = BEETLE_OPT(track_textures);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "enabled"))
+         track_textures = true;
+      else
+         track_textures = false;
+   }
+
+   var.key = BEETLE_OPT(dump_textures);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "enabled"))
+         dump_textures = true;
+      else
+         dump_textures = false;
+   }
+
+   var.key = BEETLE_OPT(replace_textures);
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (!strcmp(var.value, "enabled"))
+         replace_textures = true;
+      else
+         replace_textures = false;
+   }
+
+   struct retro_core_option_display option_display;
+   option_display.visible = track_textures;
+
+   option_display.key = BEETLE_OPT(dump_textures);
+   environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+   option_display.key = BEETLE_OPT(replace_textures);
+   environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+
    var.key = BEETLE_OPT(frame_duping);
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
@@ -398,6 +487,8 @@ void rsx_vulkan_refresh_variables(void)
         old_msaa != msaa ||
         old_show_vram != show_vram ||
         old_crop_overscan != crop_overscan ||
+        old_widescreen_hack != widescreen_hack ||
+        old_widescreen_hack_aspect_ratio_setting != widescreen_hack_aspect_ratio_setting ||
         visible_scanlines_changed)
        && renderer)
    {
@@ -423,7 +514,10 @@ void rsx_vulkan_prepare_frame(void)
    device->next_frame_context();
    renderer->reset_counters();
 
+   renderer->set_scaled_uv_offset(scaled_uv_offset);
    renderer->set_filter_mode(static_cast<Renderer::FilterMode>(filter_mode));
+   renderer->set_sprite_filter_exclude(static_cast<Renderer::FilterExclude>(filter_exclude_sprites));
+   renderer->set_polygon_2d_filter_exclude(static_cast<Renderer::FilterExclude>(filter_exclude_2d_polygons));
 }
 
 static Renderer::ScanoutMode get_scanout_mode(bool bpp24)
@@ -451,6 +545,9 @@ void rsx_vulkan_finalize_frame(const void *fb, unsigned width,
       return;
    }
 
+   renderer->set_track_textures(track_textures);
+   renderer->set_dump_textures(dump_textures);
+   renderer->set_replace_textures(replace_textures);
    renderer->set_adaptive_smoothing(adaptive_smoothing);
    renderer->set_dither_native_resolution(dither_mode == DITHER_NATIVE);
    renderer->set_horizontal_overscan_cropping(crop_overscan);
@@ -500,10 +597,12 @@ void rsx_vulkan_finalize_frame(const void *fb, unsigned width,
    prev_frame_width = scanout->get_width();
    prev_frame_height = scanout ->get_height();
 
-   //printf("%d %d\n", scanout->get_width(), scanout->get_height());
+#if 0
+   printf("%d %d\n", scanout->get_width(), scanout->get_height());
 
-   //fprintf(stderr, "Render passes: %u, Readback: %u, Writeout: %u\n",
-   //      renderer->counters.render_passes, renderer->counters.fragment_readback_pixels, renderer->counters.fragment_writeout_pixels);
+   fprintf(stderr, "Render passes: %u, Readback: %u, Writeout: %u\n",
+         renderer->counters.render_passes, renderer->counters.fragment_readback_pixels, renderer->counters.fragment_writeout_pixels);
+#endif
 }
 
 /* Draw commands */
@@ -681,6 +780,8 @@ void rsx_vulkan_push_triangle(
          break;
    }
 
+   renderer->set_primitive_type(PrimitiveType::Polygon);
+
    Vertex vertices[3] = {
       { p0x, p0y, p0w, c0, t0x, t0y },
       { p1x, p1y, p1w, c1, t1x, t1y },
@@ -708,7 +809,8 @@ void rsx_vulkan_push_quad(
       uint8_t depth_shift,
       bool dither,
       int blend_mode,
-      bool mask_test, bool set_mask)
+      bool mask_test, bool set_mask,
+      bool is_sprite, bool may_be_2d)
 {
    if (!renderer)
       return;
@@ -758,6 +860,13 @@ void rsx_vulkan_push_quad(
          renderer->set_semi_transparent(SemiTransparentMode::AddQuarter);
          break;
    }
+
+   if (is_sprite)
+      renderer->set_primitive_type(PrimitiveType::Sprite);
+   else if (may_be_2d)
+      renderer->set_primitive_type(PrimitiveType::May_Be_2D_Polygon);
+   else
+      renderer->set_primitive_type(PrimitiveType::Polygon);
 
    Vertex vertices[4] = {
       { p0x, p0y, p0w, c0, t0x, t0y },
@@ -819,6 +928,9 @@ void rsx_vulkan_load_image(
       uint16_t *vram,
       bool mask_test, bool set_mask)
 {
+#ifndef NDEBUG
+   TT_LOG_VERBOSE(RETRO_LOG_INFO, "rsx_vulkan_load_image(x=%i, y=%i, w=%i, h=%i, mask_test=%i, set_mask=%i).\n", x, y, w, h, mask_test, set_mask);
+#endif
    if (!renderer)
    {
       // Generally happens if someone loads a save state before the Vulkan context is created.
@@ -828,6 +940,7 @@ void rsx_vulkan_load_image(
       return;
    }
 
+   renderer->notify_texture_upload(PSX::Rect { x, y, w, h }, vram);
    bool dual_copy = x + w > FB_WIDTH; // Check if we need to handle wrap-around in X.
    renderer->set_mask_test(mask_test);
    renderer->set_force_mask_bit(set_mask);

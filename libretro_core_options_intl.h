@@ -215,6 +215,36 @@ struct retro_core_option_definition option_defs_it[] = {
       },
       "disabled"
    },
+   {
+      BEETLE_OPT(pgxp_2d_tol),
+      "Tolerancia de geometría PGXP 2D",
+      "Ocultar errores más evidentes en las operaciones de PGXP: el valor especifica la tolerancia en la que se mantendrán los valores de PGXP en caso de geometrías sin la información de profundidad adecuada",
+      {
+         { "disabled", NULL },
+         { "0px", NULL },
+         { "1px", NULL },
+         { "2px", NULL },
+         { "3px", NULL },
+         { "4px", NULL },
+         { "5px", NULL },
+         { "6px", NULL },
+         { "7px", NULL },
+         { "8px", NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
+   {
+      BEETLE_OPT(pgxp_nclip),
+      "Eliminación primitiva de PGXP",
+      "Utilice la implementación NCLIP de PGXP. Mejora la apariencia al reducir los agujeros en las geometrías con coordenadas PGXP. Se sabe que hace que algunos juegos se bloqueen en diversas circunstancias.",
+      {
+         { "disabled", NULL },
+         { "enabled", NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
 #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES) || defined(HAVE_VULKAN)
    {
       BEETLE_OPT(pgxp_vertex),
@@ -369,6 +399,19 @@ struct retro_core_option_definition option_defs_it[] = {
          { NULL, NULL },
       },
       "disabled"
+   },
+   {
+      BEETLE_OPT(widescreen_hack_aspect_ratio),
+      "Widescreen Mode Hack Aspect Ratio",
+      "The aspect ratio that's used by the Widescreen Mode Hack.",
+      {
+         { "16:10", NULL },
+         { "16:9",  NULL },
+         { "21:9",  NULL }, // 64:27
+         { "32:9",  NULL },
+         { NULL,    NULL },
+      },
+      "16:9"
    },
    {
       BEETLE_OPT(crop_overscan),

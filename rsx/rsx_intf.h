@@ -129,7 +129,9 @@ void rsx_intf_push_quad(float p0x, float p0y, float p0w,
                         bool dither,
                         int blend_mode,
                         uint32_t mask_test,
-                        uint32_t set_mask);
+                        uint32_t set_mask,
+                        bool is_sprite,
+                        bool may_be_2d);
 
 void rsx_intf_push_line(int16_t p0x, int16_t p0y,
                         int16_t p1x, int16_t p1y,
@@ -171,6 +173,7 @@ double rsx_common_get_timing_fps(void);
 
 float rsx_common_get_aspect_ratio(bool pal_content, bool crop_overscan,
                                   int first_visible_scanline, int last_visible_scanline,
-                                  int aspect_ratio_setting, bool vram_override, bool widescreen_override);
+                                  int aspect_ratio_setting, bool vram_override, bool widescreen_override,
+                                  int widescreen_hack_aspect_ratio_setting);
 
 #endif /*__RSX_H__*/

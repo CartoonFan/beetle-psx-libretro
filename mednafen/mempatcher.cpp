@@ -29,7 +29,7 @@
 #include "mednafen.h"
 
 #include "general.h"
-#include "md5.h"
+#include "settings.h"
 #include "mempatcher.h"
 
 #include <libretro.h>
@@ -168,8 +168,8 @@ void MDFNMP_InstallReadPatches(void)
       for(chit = SubCheats[x].begin(); chit != SubCheats[x].end(); chit++)
       {
 #if 0
-         if(MDFNGameInfo->InstallReadPatch)
-            MDFNGameInfo->InstallReadPatch(chit->addr);
+         if(EmulatedPSX.InstallReadPatch)
+            EmulatedPSX.InstallReadPatch(chit->addr);
 #endif
       }
 }
@@ -177,8 +177,8 @@ void MDFNMP_InstallReadPatches(void)
 void MDFNMP_RemoveReadPatches(void)
 {
 #if 0
-   if(MDFNGameInfo->RemoveReadPatches)
-      MDFNGameInfo->RemoveReadPatches();
+   if(EmulatedPSX.RemoveReadPatches)
+      EmulatedPSX.RemoveReadPatches();
 #endif
 }
 
@@ -365,8 +365,6 @@ static bool TestConditions(const char *string)
    if(value_at_address | v_value)
     passed = 0;
   }
-  else
-   puts("Invalid operation");
   string = strchr(string, ',');
   if(string == NULL)
    break;
@@ -634,21 +632,3 @@ int MDFNI_ToggleCheat(uint32 which)
 
  return(cheats[which].status);
 }
-
-static void SettingChanged(const char *name)
-{
- MDFNMP_RemoveReadPatches();
-
- CheatsActive = MDFN_GetSettingB("cheats");
-
- RebuildSubCheats();
-
- MDFNMP_InstallReadPatches();
-}
-
-
-MDFNSetting MDFNMP_Settings[] =
-{
- { "cheats", MDFNSF_NOFLAGS, "Enable cheats.", NULL, MDFNST_BOOL, "1", NULL, NULL, NULL, SettingChanged },
- { NULL}
-};

@@ -48,9 +48,9 @@ class InputDevice_Memcard : public InputDevice
       virtual uint64 GetNVDirtyCount(void);
       virtual void ResetNVDirtyCount(void);
 
-   private:
-
       void Format(void);
+
+   private:
 
       bool presence_new;
 
@@ -131,10 +131,11 @@ InputDevice_Memcard::~InputDevice_Memcard()
 
 void InputDevice_Memcard::Power(void)
 {
+   presence_new = true;
+   memset(rw_buffer, 0, sizeof(rw_buffer));
+   write_xor = 0;
+
    dtr = 0;
-
-   //buttons[0] = buttons[1] = 0;
-
    command_phase = 0;
 
    bitpos = 0;
@@ -142,14 +143,12 @@ void InputDevice_Memcard::Power(void)
    receive_buffer = 0;
 
    command = 0;
+   addr = 0;
+   calced_xor = 0;
 
    transmit_buffer = 0;
 
    transmit_count = 0;
-
-   addr = 0;
-
-   presence_new = true;
 }
 
 int InputDevice_Memcard::StateAction(StateMem* sm, int load, int data_only, const char* section_name)
@@ -528,4 +527,16 @@ void InputDevice_Memcard::ResetNVDirtyCount(void)
 InputDevice *Device_Memcard_Create(void)
 {
    return new InputDevice_Memcard();
+}
+
+void Device_Memcard_Power(InputDevice *device)
+{
+   if (InputDevice_Memcard* memcard = dynamic_cast<InputDevice_Memcard*>(device))
+      memcard->Power();
+}
+
+void Device_Memcard_Format(InputDevice *device)
+{
+   if (InputDevice_Memcard* memcard = dynamic_cast<InputDevice_Memcard*>(device))
+      memcard->Format();
 }

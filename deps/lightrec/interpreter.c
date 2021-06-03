@@ -1,15 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
- * Copyright (C) 2019-2020 Paul Cercueil <paul@crapouillou.net>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
+ * Copyright (C) 2019-2021 Paul Cercueil <paul@crapouillou.net>
  */
 
 #include "disassembler.h"
@@ -39,18 +30,45 @@ struct interpreter {
 	struct opcode *op;
 	u32 cycles;
 	bool delay_slot;
+	u16 offset;
 };
+
+static u32 int_get_branch_pc(const struct interpreter *inter)
+{
+	return get_branch_pc(inter->block, inter->offset, 0);
+}
+
+static inline u32 int_get_ds_pc(const struct interpreter *inter, s16 imm)
+{
+	return get_ds_pc(inter->block, inter->offset, imm);
+}
+
+static inline struct opcode *next_op(const struct interpreter *inter)
+{
+	return &inter->block->opcode_list[inter->offset + 1];
+}
 
 static inline u32 execute(lightrec_int_func_t func, struct interpreter *inter)
 {
 	return (*func)(inter);
 }
 
+static inline u32 lightrec_int_op(struct interpreter *inter)
+{
+	return execute(int_standard[inter->op->i.op], inter);
+}
+
 static inline u32 jump_skip(struct interpreter *inter)
 {
-	inter->op = inter->op->next;
+	inter->op = next_op(inter);
+	inter->offset++;
 
-	return execute(int_standard[inter->op->i.op], inter);
+	if (inter->op->flags & LIGHTREC_SYNC) {
+		inter->state->current_cycle += inter->cycles;
+		inter->cycles = 0;
+	}
+
+	return lightrec_int_op(inter);
 }
 
 static inline u32 jump_next(struct interpreter *inter)
@@ -70,7 +88,8 @@ static inline u32 jump_after_branch(struct interpreter *inter)
 	if (unlikely(inter->delay_slot))
 		return 0;
 
-	inter->op = inter->op->next;
+	inter->op = next_op(inter);
+	inter->offset++;
 
 	return jump_skip(inter);
 }
@@ -84,7 +103,7 @@ static void update_cycles_before_branch(struct interpreter *inter)
 
 		if (has_delay_slot(inter->op->c) &&
 		    !(inter->op->flags & LIGHTREC_NO_DS))
-			cycles += lightrec_cycles_of_opcode(inter->op->next->c);
+			cycles += lightrec_cycles_of_opcode(next_op(inter)->c);
 
 		inter->cycles += cycles;
 		inter->state->current_cycle += inter->cycles;
@@ -126,7 +145,7 @@ static u32 int_delay_slot(struct interpreter *inter, u32 pc, bool branch)
 {
 	struct lightrec_state *state = inter->state;
 	u32 *reg_cache = state->native_reg_cache;
-	struct opcode new_op, *op = inter->op->next;
+	struct opcode new_op, *op = next_op(inter);
 	union code op_next;
 	struct interpreter inter2 = {
 		.state = state,
@@ -223,12 +242,10 @@ static u32 int_delay_slot(struct interpreter *inter, u32 pc, bool branch)
 		} else {
 			new_op.c = op_next;
 			new_op.flags = 0;
-			new_op.offset = 0;
-			new_op.next = NULL;
 			inter2.op = &new_op;
 
 			/* Execute the first opcode of the next block */
-			(*int_standard[inter2.op->i.op])(&inter2);
+			lightrec_int_op(&inter2);
 
 			if (save_rs) {
 				new_rs = reg_cache[op->r.rs];
@@ -238,8 +255,7 @@ static u32 int_delay_slot(struct interpreter *inter, u32 pc, bool branch)
 			inter->cycles += lightrec_cycles_of_opcode(op_next);
 		}
 	} else {
-		next_pc = inter->block->pc
-			+ (inter->op->offset + 2) * sizeof(u32);
+		next_pc = int_get_ds_pc(inter, 2);
 	}
 
 	inter2.block = inter->block;
@@ -250,7 +266,7 @@ static u32 int_delay_slot(struct interpreter *inter, u32 pc, bool branch)
 		new_rt = reg_cache[op->r.rt];
 
 	/* Execute delay slot opcode */
-	ds_next_pc = (*int_standard[inter2.op->i.op])(&inter2);
+	ds_next_pc = lightrec_int_op(&inter2);
 
 	if (branch_at_addr) {
 		if (op_next.i.op == OP_SPECIAL)
@@ -286,8 +302,6 @@ static u32 int_delay_slot(struct interpreter *inter, u32 pc, bool branch)
 
 		new_op.c = op_next;
 		new_op.flags = 0;
-		new_op.offset = sizeof(u32);
-		new_op.next = NULL;
 		inter2.op = &new_op;
 		inter2.block = NULL;
 
@@ -295,7 +309,7 @@ static u32 int_delay_slot(struct interpreter *inter, u32 pc, bool branch)
 
 		pr_debug("Running delay slot of branch at target of impossible "
 			 "branch\n");
-		(*int_standard[inter2.op->i.op])(&inter2);
+		lightrec_int_op(&inter2);
 	}
 
 	return next_pc;
@@ -311,7 +325,7 @@ static u32 int_unimplemented(struct interpreter *inter)
 static u32 int_jump(struct interpreter *inter, bool link)
 {
 	struct lightrec_state *state = inter->state;
-	u32 old_pc = inter->block->pc + inter->op->offset * sizeof(u32);
+	u32 old_pc = int_get_branch_pc(inter);
 	u32 pc = (old_pc & 0xf0000000) | (inter->op->j.imm << 2);
 
 	if (link)
@@ -339,7 +353,7 @@ static u32 int_jumpr(struct interpreter *inter, u8 link_reg)
 	u32 old_pc, next_pc = state->native_reg_cache[inter->op->r.rs];
 
 	if (link_reg) {
-		old_pc = inter->block->pc + inter->op->offset * sizeof(u32);
+		old_pc = int_get_branch_pc(inter);
 		state->native_reg_cache[link_reg] = old_pc + 8;
 	}
 
@@ -399,7 +413,7 @@ static u32 int_branch(struct interpreter *inter, u32 pc,
 
 static u32 int_beq(struct interpreter *inter, bool bne)
 {
-	u32 rs, rt, old_pc = inter->block->pc + inter->op->offset * sizeof(u32);
+	u32 rs, rt, old_pc = int_get_branch_pc(inter);
 
 	rs = inter->state->native_reg_cache[inter->op->i.rs];
 	rt = inter->state->native_reg_cache[inter->op->i.rt];
@@ -419,7 +433,7 @@ static u32 int_BNE(struct interpreter *inter)
 
 static u32 int_bgez(struct interpreter *inter, bool link, bool lt, bool regimm)
 {
-	u32 old_pc = inter->block->pc + inter->op->offset * sizeof(u32);
+	u32 old_pc = int_get_branch_pc(inter);
 	s32 rs;
 
 	if (link)
@@ -487,7 +501,7 @@ static u32 int_ctc(struct interpreter *inter)
 	 * interrupt status. */
 	if (!(inter->op->flags & LIGHTREC_NO_DS) &&
 	    op->i.op == OP_CP0 && (op->r.rd == 12 || op->r.rd == 13))
-		return inter->block->pc + (op->offset + 1) * sizeof(u32);
+		return int_get_ds_pc(inter, 1);
 	else
 		return jump_next(inter);
 }
@@ -515,7 +529,7 @@ static u32 int_CP(struct interpreter *inter)
 	const struct lightrec_cop_ops *ops;
 	const struct opcode *op = inter->op;
 
-	if ((op->j.imm >> 25) & 1)
+	if (op->i.op == OP_CP2)
 		ops = &state->ops.cop2_ops;
 	else
 		ops = &state->ops.cop0_ops;
@@ -608,7 +622,7 @@ static u32 int_io(struct interpreter *inter, bool is_load)
 
 	val = lightrec_rw(inter->state, inter->op->c,
 			  reg_cache[op->rs], reg_cache[op->rt],
-			  &inter->op->flags);
+			  &inter->op->flags, inter->block);
 
 	if (is_load && op->rt)
 		reg_cache[op->rt] = val;
@@ -631,9 +645,9 @@ static u32 int_store(struct interpreter *inter)
 	lightrec_rw(inter->state, inter->op->c,
 		    inter->state->native_reg_cache[inter->op->i.rs],
 		    inter->state->native_reg_cache[inter->op->i.rt],
-		    &inter->op->flags);
+		    &inter->op->flags, inter->block);
 
-	next_pc = inter->block->pc + (inter->op->offset + 1) * 4;
+	next_pc = int_get_ds_pc(inter, 1);
 
 	/* Invalidate next PC, to force the rest of the block to be rebuilt */
 	lightrec_invalidate(inter->state, next_pc, 4);
@@ -720,7 +734,7 @@ static u32 int_syscall_break(struct interpreter *inter)
 	else
 		inter->state->exit_flags |= LIGHTREC_EXIT_SYSCALL;
 
-	return inter->block->pc + inter->op->offset * sizeof(u32);
+	return int_get_ds_pc(inter, 0);
 }
 
 static u32 int_special_MFHI(struct interpreter *inter)
@@ -768,11 +782,14 @@ static u32 int_special_MULT(struct interpreter *inter)
 	u32 *reg_cache = inter->state->native_reg_cache;
 	s32 rs = reg_cache[inter->op->r.rs];
 	s32 rt = reg_cache[inter->op->r.rt];
+	u8 reg_lo = get_mult_div_lo(inter->op->c);
+	u8 reg_hi = get_mult_div_hi(inter->op->c);
 	u64 res = (s64)rs * (s64)rt;
 
-	if (!(inter->op->flags & LIGHTREC_MULT32))
-		reg_cache[REG_HI] = res >> 32;
-	reg_cache[REG_LO] = res;
+	if (!(inter->op->flags & LIGHTREC_NO_HI))
+		reg_cache[reg_hi] = res >> 32;
+	if (!(inter->op->flags & LIGHTREC_NO_LO))
+		reg_cache[reg_lo] = res;
 
 	return jump_next(inter);
 }
@@ -782,11 +799,14 @@ static u32 int_special_MULTU(struct interpreter *inter)
 	u32 *reg_cache = inter->state->native_reg_cache;
 	u32 rs = reg_cache[inter->op->r.rs];
 	u32 rt = reg_cache[inter->op->r.rt];
+	u8 reg_lo = get_mult_div_lo(inter->op->c);
+	u8 reg_hi = get_mult_div_hi(inter->op->c);
 	u64 res = (u64)rs * (u64)rt;
 
-	if (!(inter->op->flags & LIGHTREC_MULT32))
-		reg_cache[REG_HI] = res >> 32;
-	reg_cache[REG_LO] = res;
+	if (!(inter->op->flags & LIGHTREC_NO_HI))
+		reg_cache[reg_hi] = res >> 32;
+	if (!(inter->op->flags & LIGHTREC_NO_LO))
+		reg_cache[reg_lo] = res;
 
 	return jump_next(inter);
 }
@@ -796,6 +816,8 @@ static u32 int_special_DIV(struct interpreter *inter)
 	u32 *reg_cache = inter->state->native_reg_cache;
 	s32 rs = reg_cache[inter->op->r.rs];
 	s32 rt = reg_cache[inter->op->r.rt];
+	u8 reg_lo = get_mult_div_lo(inter->op->c);
+	u8 reg_hi = get_mult_div_hi(inter->op->c);
 	u32 lo, hi;
 
 	if (rt == 0) {
@@ -806,8 +828,10 @@ static u32 int_special_DIV(struct interpreter *inter)
 		hi = rs % rt;
 	}
 
-	reg_cache[REG_HI] = hi;
-	reg_cache[REG_LO] = lo;
+	if (!(inter->op->flags & LIGHTREC_NO_HI))
+		reg_cache[reg_hi] = hi;
+	if (!(inter->op->flags & LIGHTREC_NO_LO))
+		reg_cache[reg_lo] = lo;
 
 	return jump_next(inter);
 }
@@ -817,6 +841,8 @@ static u32 int_special_DIVU(struct interpreter *inter)
 	u32 *reg_cache = inter->state->native_reg_cache;
 	u32 rs = reg_cache[inter->op->r.rs];
 	u32 rt = reg_cache[inter->op->r.rt];
+	u8 reg_lo = get_mult_div_lo(inter->op->c);
+	u8 reg_hi = get_mult_div_hi(inter->op->c);
 	u32 lo, hi;
 
 	if (rt == 0) {
@@ -827,8 +853,10 @@ static u32 int_special_DIVU(struct interpreter *inter)
 		hi = rs % rt;
 	}
 
-	reg_cache[REG_HI] = hi;
-	reg_cache[REG_LO] = lo;
+	if (!(inter->op->flags & LIGHTREC_NO_HI))
+		reg_cache[reg_hi] = hi;
+	if (!(inter->op->flags & LIGHTREC_NO_LO))
+		reg_cache[reg_lo] = lo;
 
 	return jump_next(inter);
 }
@@ -937,11 +965,6 @@ static u32 int_special_SLTU(struct interpreter *inter)
 	return jump_next(inter);
 }
 
-static u32 int_META_SKIP(struct interpreter *inter)
-{
-	return jump_skip(inter);
-}
-
 static u32 int_META_MOV(struct interpreter *inter)
 {
 	u32 *reg_cache = inter->state->native_reg_cache;
@@ -953,15 +976,8 @@ static u32 int_META_MOV(struct interpreter *inter)
 	return jump_next(inter);
 }
 
-static u32 int_META_SYNC(struct interpreter *inter)
-{
-	inter->state->current_cycle += inter->cycles;
-	inter->cycles = 0;
-
-	return jump_skip(inter);
-}
-
 static const lightrec_int_func_t int_standard[64] = {
+	SET_DEFAULT_ELM(int_standard, int_unimplemented),
 	[OP_SPECIAL]		= int_SPECIAL,
 	[OP_REGIMM]		= int_REGIMM,
 	[OP_J]			= int_J,
@@ -995,14 +1011,13 @@ static const lightrec_int_func_t int_standard[64] = {
 	[OP_LWC2]		= int_LWC2,
 	[OP_SWC2]		= int_store,
 
-	[OP_META_REG_UNLOAD]	= int_META_SKIP,
 	[OP_META_BEQZ]		= int_BEQ,
 	[OP_META_BNEZ]		= int_BNE,
 	[OP_META_MOV]		= int_META_MOV,
-	[OP_META_SYNC]		= int_META_SYNC,
 };
 
 static const lightrec_int_func_t int_special[64] = {
+	SET_DEFAULT_ELM(int_special, int_unimplemented),
 	[OP_SPECIAL_SLL]	= int_special_SLL,
 	[OP_SPECIAL_SRL]	= int_special_SRL,
 	[OP_SPECIAL_SRA]	= int_special_SRA,
@@ -1034,6 +1049,7 @@ static const lightrec_int_func_t int_special[64] = {
 };
 
 static const lightrec_int_func_t int_regimm[64] = {
+	SET_DEFAULT_ELM(int_regimm, int_unimplemented),
 	[OP_REGIMM_BLTZ]	= int_regimm_BLTZ,
 	[OP_REGIMM_BGEZ]	= int_regimm_BGEZ,
 	[OP_REGIMM_BLTZAL]	= int_regimm_BLTZAL,
@@ -1041,6 +1057,7 @@ static const lightrec_int_func_t int_regimm[64] = {
 };
 
 static const lightrec_int_func_t int_cp0[64] = {
+	SET_DEFAULT_ELM(int_cp0, int_CP),
 	[OP_CP0_MFC0]		= int_cfc,
 	[OP_CP0_CFC0]		= int_cfc,
 	[OP_CP0_MTC0]		= int_ctc,
@@ -1049,6 +1066,7 @@ static const lightrec_int_func_t int_cp0[64] = {
 };
 
 static const lightrec_int_func_t int_cp2_basic[64] = {
+	SET_DEFAULT_ELM(int_cp2_basic, int_CP),
 	[OP_CP2_BASIC_MFC2]	= int_cfc,
 	[OP_CP2_BASIC_CFC2]	= int_cfc,
 	[OP_CP2_BASIC_MTC2]	= int_ctc,
@@ -1058,54 +1076,53 @@ static const lightrec_int_func_t int_cp2_basic[64] = {
 static u32 int_SPECIAL(struct interpreter *inter)
 {
 	lightrec_int_func_t f = int_special[inter->op->r.op];
-	if (likely(f))
-		return execute(f, inter);
-	else
+
+	if (!HAS_DEFAULT_ELM && unlikely(!f))
 		return int_unimplemented(inter);
+
+	return execute(f, inter);
 }
 
 static u32 int_REGIMM(struct interpreter *inter)
 {
 	lightrec_int_func_t f = int_regimm[inter->op->r.rt];
-	if (likely(f))
-		return execute(f, inter);
-	else
+
+	if (!HAS_DEFAULT_ELM && unlikely(!f))
 		return int_unimplemented(inter);
+
+	return execute(f, inter);
 }
 
 static u32 int_CP0(struct interpreter *inter)
 {
 	lightrec_int_func_t f = int_cp0[inter->op->r.rs];
-	if (likely(f))
-		return execute(f, inter);
-	else
+
+	if (!HAS_DEFAULT_ELM && unlikely(!f))
 		return int_CP(inter);
+
+	return execute(f, inter);
 }
 
 static u32 int_CP2(struct interpreter *inter)
 {
 	if (inter->op->r.op == OP_CP2_BASIC) {
 		lightrec_int_func_t f = int_cp2_basic[inter->op->r.rs];
-		if (likely(f))
+		if (HAS_DEFAULT_ELM || likely(f))
 			return execute(f, inter);
 	}
 
 	return int_CP(inter);
 }
 
-static u32 lightrec_int_op(struct interpreter *inter)
-{
-	return execute(int_standard[inter->op->i.op], inter);
-}
-
-static u32 lightrec_emulate_block_list(struct block *block, struct opcode *op)
+static u32 lightrec_emulate_block_list(struct block *block, u32 offset)
 {
 	struct interpreter inter;
 	u32 pc;
 
 	inter.block = block;
 	inter.state = block->state;
-	inter.op = op;
+	inter.offset = offset;
+	inter.op = &block->opcode_list[offset];
 	inter.cycles = 0;
 	inter.delay_slot = false;
 
@@ -1122,12 +1139,9 @@ static u32 lightrec_emulate_block_list(struct block *block, struct opcode *op)
 u32 lightrec_emulate_block(struct block *block, u32 pc)
 {
 	u32 offset = (kunseg(pc) - kunseg(block->pc)) >> 2;
-	struct opcode *op;
 
-	for (op = block->opcode_list;
-	     op && (op->offset < offset); op = op->next);
-	if (op)
-		return lightrec_emulate_block_list(block, op);
+	if (offset < block->nb_ops)
+		return lightrec_emulate_block_list(block, offset);
 
 	pr_err("PC 0x%x is outside block at PC 0x%x\n", pc, block->pc);
 

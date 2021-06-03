@@ -279,6 +279,9 @@ enum retro_language
    RETRO_LANGUAGE_GREEK               = 17,
    RETRO_LANGUAGE_TURKISH             = 18,
    RETRO_LANGUAGE_SLOVAK              = 19,
+   RETRO_LANGUAGE_PERSIAN             = 20,
+   RETRO_LANGUAGE_HEBREW              = 21,
+   RETRO_LANGUAGE_ASTURIAN            = 22,
    RETRO_LANGUAGE_LAST,
 
    /* Ensure sizeof(enum) == sizeof(int) */
@@ -1316,6 +1319,20 @@ enum retro_mod
                                             * Should not be used for trivial messages, which should simply be
                                             * logged via RETRO_ENVIRONMENT_GET_LOG_INTERFACE (or as a
                                             * fallback, stderr).
+                                            */
+
+#define RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS 61
+                                           /* unsigned * --
+                                            * Unsigned value is the number of active input devices
+                                            * provided by the frontend. This may change between
+                                            * frames, but will remain constant for the duration
+                                            * of each frame.
+                                            * If callback returns true, a core need not poll any
+                                            * input device with an index greater than or equal to
+                                            * the number of active devices.
+                                            * If callback returns false, the number of active input
+                                            * devices is unknown. In this case, all input devices
+                                            * should be considered active.
                                             */
 
 /* VFS functionality */
@@ -2655,7 +2672,7 @@ struct retro_input_descriptor
 struct retro_system_info
 {
    /* All pointers are owned by libretro implementation, and pointers must
-    * remain valid until retro_deinit() is called. */
+    * remain valid until it is unloaded. */
 
    const char *library_name;      /* Descriptive name of library. Should not
                                    * contain any version numbers, etc. */
