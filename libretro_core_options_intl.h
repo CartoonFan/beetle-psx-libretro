@@ -49649,7 +49649,7 @@ struct retro_core_options_v2 options_id = {
 /* RETRO_LANGUAGE_IT */
 
 #define CATEGORY_SYSTEM_LABEL_IT "Sistema"
-#define CATEGORY_SYSTEM_INFO_0_IT NULL
+#define CATEGORY_SYSTEM_INFO_0_IT "Cambia sistema e opzioni di overclocking."
 #define CATEGORY_VIDEO_LABEL_IT NULL
 #define CATEGORY_VIDEO_INFO_0_IT "Cambia le proporzioni, il ritaglio, il filtro video e le impostazioni di salto dei fotogrammi."
 #define CATEGORY_PGXP_LABEL_IT "Pgxp (Precision Geometry Transform Pipeline)"
@@ -49659,9 +49659,9 @@ struct retro_core_options_v2 options_id = {
 #define CATEGORY_INPUT_LABEL_IT NULL
 #define CATEGORY_INPUT_INFO_0_IT "Cambia le impostazioni della pistola ottica, del mouse e del neGcon."
 #define CATEGORY_MEMCARDS_LABEL_IT "Scheda Di Memoria"
-#define CATEGORY_MEMCARDS_INFO_0_IT NULL
+#define CATEGORY_MEMCARDS_INFO_0_IT "Cambia le impostazioni relative alla scheda di memoria virtuale."
 #define CATEGORY_HACKS_LABEL_IT "Hack di Emulazione"
-#define CATEGORY_HACKS_INFO_0_IT NULL
+#define CATEGORY_HACKS_INFO_0_IT "Cambia le impostazioni di precisione di emulazione che influenzano prestazioni e compatibilità di basso livello."
 #define BEETLE_OPT_CPU_FREQ_SCALE_LABEL_IT "Frequenza CPU (Overclock)"
 #define BEETLE_OPT_CPU_FREQ_SCALE_INFO_0_IT "Overclock (o underclock) della CPU PSX emulata. Overclocking può eliminare il rallentamento e migliorare i frame rate in alcuni giochi a scapito di maggiori requisiti di prestazioni. Si noti che alcuni giochi hanno un limitatore interno di frame rate e potrebbero non beneficiare di overclocking. Può causare determinati effetti ad animarsi più velocemente di quanto previsto in alcuni titoli quando sovraorologiato."
 #define OPTION_VAL_50_IT NULL
@@ -49669,7 +49669,7 @@ struct retro_core_options_v2 options_id = {
 #define OPTION_VAL_70_IT NULL
 #define OPTION_VAL_80_IT NULL
 #define OPTION_VAL_90_IT NULL
-#define OPTION_VAL_100_IT NULL
+#define OPTION_VAL_100_IT "100% (Nativo)"
 #define OPTION_VAL_110_IT NULL
 #define OPTION_VAL_120_IT NULL
 #define OPTION_VAL_130_IT NULL
@@ -49745,7 +49745,7 @@ struct retro_core_options_v2 options_id = {
 #define OPTION_VAL_32X_IT NULL
 #define BEETLE_OPT_GTE_OVERCLOCK_LABEL_IT "Overclock GTE"
 #define BEETLE_OPT_GTE_OVERCLOCK_INFO_0_IT "Abbassa tutte le operazioni GTE emulate (CPU coprocessore per grafica 3D) ad una latenza costante di un ciclo. Per i giochi che fanno uso pesante del GTE, questo può migliorare notevolmente il frame rate e la stabilità del tempo del telaio."
-#define BEETLE_OPT_CD_ACCESS_METHOD_LABEL_IT NULL
+#define BEETLE_OPT_CD_ACCESS_METHOD_LABEL_IT "Metodo di accesso CD"
 #define BEETLE_OPT_CD_ACCESS_METHOD_INFO_0_IT NULL
 #define OPTION_VAL_SYNC_IT "Sincrono"
 #define OPTION_VAL_ASYNC_IT "Asincrono"
@@ -49759,12 +49759,12 @@ struct retro_core_options_v2 options_id = {
 #define OPTION_VAL_14X_IT NULL
 #define BEETLE_OPT_SKIP_BIOS_LABEL_IT "Salta BIOS"
 #define BEETLE_OPT_SKIP_BIOS_INFO_0_IT "Salta l'animazione di avvio del BIOS di PlayStation normalmente visualizzata durante il caricamento del contenuto. Nota: Abilitare questo causa problemi di compatibilità con un certo numero di giochi (PAL copia giochi protetti, Saga Frontier, ecc.)."
-#define BEETLE_OPT_OVERRIDE_BIOS_LABEL_IT NULL
-#define BEETLE_OPT_OVERRIDE_BIOS_INFO_0_IT NULL
+#define BEETLE_OPT_OVERRIDE_BIOS_LABEL_IT "Sovrascrivi BIOS"
+#define BEETLE_OPT_OVERRIDE_BIOS_INFO_0_IT "Sovrascrive il BIOS specifico della regione standard con uno senza regione se trovato. È necessario il riavvio."
 #define OPTION_VAL_PSXONPSP_IT NULL
 #define OPTION_VAL_PS1_ROM_IT NULL
 #define BEETLE_OPT_INTERNAL_RESOLUTION_LABEL_IT "Risoluzione GPU Interna"
-#define BEETLE_OPT_INTERNAL_RESOLUTION_INFO_0_IT NULL
+#define BEETLE_OPT_INTERNAL_RESOLUTION_INFO_0_IT "Risoluzioni maggiori di '1x (Nativo)' migliorano la fedeltà dei modelli 3D a spese di requisiti di performance più alti. Elementi 2D sono generalmente non condizionati da questa impostazione."
 #define BEETLE_OPT_RENDERER_LABEL_IT NULL
 #define BEETLE_OPT_RENDERER_INFO_0_IT NULL
 #define OPTION_VAL_HARDWARE_IT "Hardware"
@@ -49926,7 +49926,7 @@ struct retro_core_options_v2 options_id = {
 #define BEETLE_OPT_NEGCON_DEADZONE_LABEL_IT "zona morta della torsione del neGcon"
 #define BEETLE_OPT_NEGCON_DEADZONE_INFO_0_IT NULL
 #define OPTION_VAL_0_O44_IT NULL
-#define BEETLE_OPT_USE_MEDNAFEN_MEMCARD0_METHOD_LABEL_IT NULL
+#define BEETLE_OPT_USE_MEDNAFEN_MEMCARD0_METHOD_LABEL_IT "Metodo Memory Card"
 #define BEETLE_OPT_USE_MEDNAFEN_MEMCARD0_METHOD_INFO_0_IT NULL
 #define OPTION_VAL_LIBRETRO_IT NULL
 #define OPTION_VAL_MEDNAFEN_IT NULL
@@ -49936,7 +49936,7 @@ struct retro_core_options_v2 options_id = {
 #define BEETLE_OPT_SHARED_MEMORY_CARDS_INFO_0_IT NULL
 #define BEETLE_OPT_MEMCARD_LEFT_INDEX_LABEL_IT NULL
 #define BEETLE_OPT_MEMCARD_LEFT_INDEX_INFO_0_IT NULL
-#define OPTION_VAL_0_O48_IT NULL
+#define OPTION_VAL_0_O48_IT "0 (Predefinito)"
 #define BEETLE_OPT_MEMCARD_RIGHT_INDEX_LABEL_IT NULL
 #define BEETLE_OPT_MEMCARD_RIGHT_INDEX_INFO_0_IT NULL
 #define OPTION_VAL_1_O49_IT NULL
@@ -50034,7 +50034,7 @@ struct retro_core_options_v2 options_id = {
 #define OPTION_VAL_11PX_O64_0_IT NULL
 #define OPTION_VAL_12PX_O64_0_IT NULL
 #define BEETLE_OPT_IMAGE_OFFSET_CYCLES_LABEL_IT "Offset Immagine Orizzontale (Cicli GPU)"
-#define BEETLE_OPT_IMAGE_OFFSET_CYCLES_INFO_0_IT NULL
+#define BEETLE_OPT_IMAGE_OFFSET_CYCLES_INFO_0_IT "I valori positivi muovono l'immagine a destra, i valori negativi muovono invece l'immagine a sinistra. Questa impostazione è supportata solo dai renderer hardware."
 #define BEETLE_OPT_INITIAL_SCANLINE_LABEL_IT "Linea Iniziale Di Scansione - NTSC"
 #define BEETLE_OPT_INITIAL_SCANLINE_INFO_0_IT NULL
 #define BEETLE_OPT_LAST_SCANLINE_LABEL_IT "Ultima Linea Di Scansione - NTSC"
